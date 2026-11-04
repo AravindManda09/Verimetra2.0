@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: verimetra
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/verimetra_second}
+    username: ${SPRING_DATASOURCE_USERNAME:verimetra}
+    password: ${SPRING_DATASOURCE_PASSWORD:verimetra_secure_password}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+verimetra:
+  ocr:
+    service-url: ${OCR_SERVICE_URL:http://localhost:8090}
+    timeout-seconds: 30
+  evidence:
+    storage-path: ${EVIDENCE_STORAGE_PATH:./evidence}
+    allowed-extensions: jpg,jpeg,png,webp,bmp,tiff
+    max-file-size-mb: 10

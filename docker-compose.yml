@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: verimetra-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-verimetra_second}
+      POSTGRES_USER: ${POSTGRES_USER:-verimetra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-verimetra_secure_password}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-verimetra}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: verimetra-ocr
+    ports:
+      - "${OCR_PORT:-8090}:8090"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: verimetra-backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-verimetra_second}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-verimetra}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-verimetra_secure_password}
+      SPRING_FLYWAY_ENABLED: "true"
+      OCR_SERVICE_URL: http://ocr-service:8090
+      EVIDENCE_STORAGE_PATH: /app/evidence
+      SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE: 10MB
+      SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE: 10MB
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    volumes:
+      - evidence:/app/evidence
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8080}
+    container_name: verimetra-frontend
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  evidence:
