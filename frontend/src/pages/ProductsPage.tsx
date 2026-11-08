@@ -27,59 +27,40 @@ import { Product, ProductDeclaration, Evaluation, PackageEvidence } from '../typ
 import toast from 'react-hot-toast';
 
 // ──────────────────────────────────────────────
-// Category-specific listing field definitions
+// Category-specific listing field definitions (5-6 essential fields)
 // ──────────────────────────────────────────────
 const CATEGORY_LISTING_FIELDS: Record<string, { fieldName: string; label: string; placeholder: string; required?: boolean }[]> = {
   FOOD: [
     { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 45.00', required: true },
     { fieldName: 'net_quantity', label: 'Net Quantity', placeholder: 'e.g. 500g', required: true },
     { fieldName: 'manufacturer_name', label: 'Manufacturer / Packer', placeholder: 'e.g. Tata Consumer Products' },
-    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Mumbai, Maharashtra' },
     { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
     { fieldName: 'fssai_license', label: 'FSSAI License No.', placeholder: 'e.g. 10012345000123' },
-    { fieldName: 'ingredients', label: 'Ingredients', placeholder: 'e.g. Refined Iodised Salt' },
-    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 01/2026' },
     { fieldName: 'expiry_date', label: 'Best Before / Expiry', placeholder: 'e.g. 12 months from packaging' },
-    { fieldName: 'batch_number', label: 'Batch / Lot No.', placeholder: 'e.g. BATCH-2026-A1' },
-    { fieldName: 'nutritional_info', label: 'Nutritional Information', placeholder: 'e.g. Energy: 0 Kcal per 100g' },
   ],
   COSMETICS: [
     { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 199.00', required: true },
     { fieldName: 'net_quantity', label: 'Net Quantity / Volume', placeholder: 'e.g. 100ml', required: true },
     { fieldName: 'manufacturer_name', label: 'Manufacturer / Importer', placeholder: 'e.g. Hindustan Unilever Ltd' },
-    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Bangalore, Karnataka' },
     { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
-    { fieldName: 'ingredients', label: 'Ingredients List', placeholder: 'e.g. Aqua, Glycerin, Niacinamide...' },
     { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 03/2026' },
-    { fieldName: 'expiry_date', label: 'Expiry Date / Use Before', placeholder: 'e.g. 03/2028' },
-    { fieldName: 'batch_number', label: 'Batch No.', placeholder: 'e.g. COS-B2026-45' },
-    { fieldName: 'is_registration_number', label: 'IS / BIS Registration', placeholder: 'e.g. IS 15153:2002' },
-    { fieldName: 'usage_directions', label: 'Directions for Use', placeholder: 'e.g. Apply on clean skin...' },
+    { fieldName: 'expiry_date', label: 'Expiry / Use Before', placeholder: 'e.g. 03/2028' },
   ],
   ELECTRONICS: [
     { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 12999.00', required: true },
-    { fieldName: 'net_quantity', label: 'Net Content / Count', placeholder: 'e.g. 1 Unit', required: true },
+    { fieldName: 'net_quantity', label: 'Net Quantity / Count', placeholder: 'e.g. 1 Unit', required: true },
     { fieldName: 'manufacturer_name', label: 'Manufacturer / Importer', placeholder: 'e.g. Samsung India Electronics' },
-    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Noida, UP' },
     { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. Vietnam' },
     { fieldName: 'model_number', label: 'Model Number', placeholder: 'e.g. SM-A156E' },
-    { fieldName: 'serial_number', label: 'Serial Number', placeholder: 'e.g. R58T12345XYZ' },
     { fieldName: 'warranty_period', label: 'Warranty Period', placeholder: 'e.g. 1 Year' },
-    { fieldName: 'bis_isi_mark', label: 'BIS / ISI / BEE Rating', placeholder: 'e.g. BIS CM/L-1234567' },
-    { fieldName: 'energy_rating', label: 'Energy Rating (Stars)', placeholder: 'e.g. 5 Star' },
-    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 01/2026' },
   ],
   HOUSEHOLD: [
     { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 89.00', required: true },
-    { fieldName: 'net_quantity', label: 'Net Content / Volume', placeholder: 'e.g. 500ml', required: true },
+    { fieldName: 'net_quantity', label: 'Net Quantity / Volume', placeholder: 'e.g. 500ml', required: true },
     { fieldName: 'manufacturer_name', label: 'Manufacturer / Packer', placeholder: 'e.g. Godrej Consumer Products' },
-    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Mumbai, Maharashtra' },
     { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
     { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 06/2026' },
     { fieldName: 'expiry_date', label: 'Expiry / Best Before', placeholder: 'e.g. 24 months from mfg' },
-    { fieldName: 'batch_number', label: 'Batch / Lot No.', placeholder: 'e.g. HH-2026-L7' },
-    { fieldName: 'hazard_warnings', label: 'Hazard / Safety Warnings', placeholder: 'e.g. Keep away from children' },
-    { fieldName: 'usage_directions', label: 'Directions for Use', placeholder: 'e.g. Dilute with water before use' },
   ],
 };
 
