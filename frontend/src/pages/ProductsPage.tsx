@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Package,
   Plus,
@@ -10,6 +10,9 @@ import {
   Play,
   X,
   ExternalLink,
+  Edit3,
+  Save,
+  ChevronDown,
 } from 'lucide-react';
 import {
   getProducts,
@@ -18,9 +21,70 @@ import {
   getProductEvaluations,
   runEvaluation,
   getEvidenceByProduct,
+  updateDeclarations,
 } from '../api/client';
 import { Product, ProductDeclaration, Evaluation, PackageEvidence } from '../types';
 import toast from 'react-hot-toast';
+
+// ──────────────────────────────────────────────
+// Category-specific listing field definitions
+// ──────────────────────────────────────────────
+const CATEGORY_LISTING_FIELDS: Record<string, { fieldName: string; label: string; placeholder: string; required?: boolean }[]> = {
+  FOOD: [
+    { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 45.00', required: true },
+    { fieldName: 'net_quantity', label: 'Net Quantity', placeholder: 'e.g. 500g', required: true },
+    { fieldName: 'manufacturer_name', label: 'Manufacturer / Packer', placeholder: 'e.g. Tata Consumer Products' },
+    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Mumbai, Maharashtra' },
+    { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
+    { fieldName: 'fssai_license', label: 'FSSAI License No.', placeholder: 'e.g. 10012345000123' },
+    { fieldName: 'ingredients', label: 'Ingredients', placeholder: 'e.g. Refined Iodised Salt' },
+    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 01/2026' },
+    { fieldName: 'expiry_date', label: 'Best Before / Expiry', placeholder: 'e.g. 12 months from packaging' },
+    { fieldName: 'batch_number', label: 'Batch / Lot No.', placeholder: 'e.g. BATCH-2026-A1' },
+    { fieldName: 'nutritional_info', label: 'Nutritional Information', placeholder: 'e.g. Energy: 0 Kcal per 100g' },
+  ],
+  COSMETICS: [
+    { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 199.00', required: true },
+    { fieldName: 'net_quantity', label: 'Net Quantity / Volume', placeholder: 'e.g. 100ml', required: true },
+    { fieldName: 'manufacturer_name', label: 'Manufacturer / Importer', placeholder: 'e.g. Hindustan Unilever Ltd' },
+    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Bangalore, Karnataka' },
+    { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
+    { fieldName: 'ingredients', label: 'Ingredients List', placeholder: 'e.g. Aqua, Glycerin, Niacinamide...' },
+    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 03/2026' },
+    { fieldName: 'expiry_date', label: 'Expiry Date / Use Before', placeholder: 'e.g. 03/2028' },
+    { fieldName: 'batch_number', label: 'Batch No.', placeholder: 'e.g. COS-B2026-45' },
+    { fieldName: 'is_registration_number', label: 'IS / BIS Registration', placeholder: 'e.g. IS 15153:2002' },
+    { fieldName: 'usage_directions', label: 'Directions for Use', placeholder: 'e.g. Apply on clean skin...' },
+  ],
+  ELECTRONICS: [
+    { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 12999.00', required: true },
+    { fieldName: 'net_quantity', label: 'Net Content / Count', placeholder: 'e.g. 1 Unit', required: true },
+    { fieldName: 'manufacturer_name', label: 'Manufacturer / Importer', placeholder: 'e.g. Samsung India Electronics' },
+    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Noida, UP' },
+    { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. Vietnam' },
+    { fieldName: 'model_number', label: 'Model Number', placeholder: 'e.g. SM-A156E' },
+    { fieldName: 'serial_number', label: 'Serial Number', placeholder: 'e.g. R58T12345XYZ' },
+    { fieldName: 'warranty_period', label: 'Warranty Period', placeholder: 'e.g. 1 Year' },
+    { fieldName: 'bis_isi_mark', label: 'BIS / ISI / BEE Rating', placeholder: 'e.g. BIS CM/L-1234567' },
+    { fieldName: 'energy_rating', label: 'Energy Rating (Stars)', placeholder: 'e.g. 5 Star' },
+    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 01/2026' },
+  ],
+  HOUSEHOLD: [
+    { fieldName: 'mrp', label: 'MRP (₹)', placeholder: 'e.g. 89.00', required: true },
+    { fieldName: 'net_quantity', label: 'Net Content / Volume', placeholder: 'e.g. 500ml', required: true },
+    { fieldName: 'manufacturer_name', label: 'Manufacturer / Packer', placeholder: 'e.g. Godrej Consumer Products' },
+    { fieldName: 'manufacturer_address', label: 'Manufacturer Address', placeholder: 'e.g. Mumbai, Maharashtra' },
+    { fieldName: 'country_of_origin', label: 'Country of Origin', placeholder: 'e.g. India' },
+    { fieldName: 'manufacture_date', label: 'Date of Manufacture', placeholder: 'e.g. 06/2026' },
+    { fieldName: 'expiry_date', label: 'Expiry / Best Before', placeholder: 'e.g. 24 months from mfg' },
+    { fieldName: 'batch_number', label: 'Batch / Lot No.', placeholder: 'e.g. HH-2026-L7' },
+    { fieldName: 'hazard_warnings', label: 'Hazard / Safety Warnings', placeholder: 'e.g. Keep away from children' },
+    { fieldName: 'usage_directions', label: 'Directions for Use', placeholder: 'e.g. Dilute with water before use' },
+  ],
+};
+
+// Get generic fallback fields for any unknown category
+const getFieldsForCategory = (cat: string) => CATEGORY_LISTING_FIELDS[cat] || CATEGORY_LISTING_FIELDS['FOOD'];
 
 export const ProductsPage: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
@@ -36,6 +100,14 @@ export const ProductsPage: React.FC = () => {
   const [evidenceList, setEvidenceList] = useState<PackageEvidence[]>([]);
   const [drawerLoading, setDrawerLoading] = useState(false);
 
+  // Edit listings modal
+  const [showEditListings, setShowEditListings] = useState(false);
+  const [listingFormValues, setListingFormValues] = useState<Record<string, string>>({});
+  const [listingSaving, setListingSaving] = useState(false);
+
+  // Ref for auto-scrolling to details
+  const detailsRef = useRef<HTMLDivElement>(null);
+
   // New product form
   const [newProduct, setNewProduct] = useState({
     productName: '',
@@ -45,6 +117,10 @@ export const ProductsPage: React.FC = () => {
     countryOfOrigin: 'India',
     description: '',
   });
+
+  // Listing fields in create-product modal
+  const [createListingValues, setCreateListingValues] = useState<Record<string, string>>({});
+  const [showListingInCreate, setShowListingInCreate] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -69,6 +145,12 @@ export const ProductsPage: React.FC = () => {
   const handleSelectProduct = async (product: Product) => {
     setSelectedProduct(product);
     setDrawerLoading(true);
+
+    // Smooth auto-scroll down to details panel immediately
+    setTimeout(() => {
+      detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+
     try {
       const [declRes, evalRes, evRes] = await Promise.all([
         getProductDeclarations(product.id),
@@ -89,6 +171,21 @@ export const ProductsPage: React.FC = () => {
     e.preventDefault();
     try {
       const res = await createProduct(newProduct as any);
+      const createdProduct = res.data;
+
+      // Save listing declarations if any
+      const listingFields = Object.entries(createListingValues)
+        .filter(([_, v]) => v.trim() !== '')
+        .map(([fieldName, fieldValue]) => ({ fieldName, fieldValue }));
+
+      if (listingFields.length > 0) {
+        try {
+          await updateDeclarations(createdProduct.id, { source: 'LISTING', fields: listingFields });
+        } catch {
+          toast.error('Product created but listing declarations failed to save.');
+        }
+      }
+
       toast.success('Product registered successfully!');
       setShowCreateModal(false);
       setNewProduct({
@@ -99,8 +196,10 @@ export const ProductsPage: React.FC = () => {
         countryOfOrigin: 'India',
         description: '',
       });
+      setCreateListingValues({});
+      setShowListingInCreate(false);
       fetchProducts();
-      handleSelectProduct(res.data);
+      handleSelectProduct(createdProduct);
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Failed to register product');
     }
@@ -117,6 +216,49 @@ export const ProductsPage: React.FC = () => {
     }
   };
 
+  // ── Edit Listings ──
+  const openEditListings = () => {
+    if (!selectedProduct) return;
+    // Pre-fill form with existing LISTING declarations
+    const existingListings: Record<string, string> = {};
+    const fields = getFieldsForCategory(selectedProduct.category);
+    // Initialize all fields as empty
+    fields.forEach(f => { existingListings[f.fieldName] = ''; });
+    // Fill in existing values
+    declarations
+      .filter(d => d.source === 'LISTING')
+      .forEach(d => { existingListings[d.fieldName] = d.fieldValue || ''; });
+    setListingFormValues(existingListings);
+    setShowEditListings(true);
+  };
+
+  const handleSaveListings = async () => {
+    if (!selectedProduct) return;
+    setListingSaving(true);
+    try {
+      const fields = Object.entries(listingFormValues)
+        .filter(([_, v]) => v.trim() !== '')
+        .map(([fieldName, fieldValue]) => ({ fieldName, fieldValue }));
+
+      if (fields.length === 0) {
+        toast.error('Please fill in at least one listing field.');
+        setListingSaving(false);
+        return;
+      }
+
+      const res = await updateDeclarations(selectedProduct.id, { source: 'LISTING', fields });
+      // Refresh declarations
+      const declRes = await getProductDeclarations(selectedProduct.id);
+      setDeclarations(declRes.data);
+      toast.success(`Listing declarations updated! (${fields.length} fields saved)`);
+      setShowEditListings(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Failed to save listing declarations');
+    } finally {
+      setListingSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -128,7 +270,11 @@ export const ProductsPage: React.FC = () => {
           </p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={() => {
+            setCreateListingValues({});
+            setShowListingInCreate(false);
+            setShowCreateModal(true);
+          }}
           className="mt-3 sm:mt-0 inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold rounded-md shadow-sm"
         >
           <Plus className="w-4 h-4 mr-1.5" />
@@ -221,9 +367,10 @@ export const ProductsPage: React.FC = () => {
                           e.stopPropagation();
                           handleSelectProduct(p);
                         }}
-                        className="text-xs text-primary-600 hover:text-primary-800 font-semibold"
+                        className="inline-flex items-center text-xs text-primary-600 hover:text-primary-800 font-semibold"
                       >
-                        Inspect &rarr;
+                        Inspect
+                        <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
                       </button>
                     </td>
                   </tr>
@@ -242,7 +389,7 @@ export const ProductsPage: React.FC = () => {
 
       {/* Details Slide-Over / Drawer */}
       {selectedProduct && (
-        <div className="bg-white rounded-xl border border-slate-300 shadow-lg p-6 space-y-6">
+        <div ref={detailsRef} className="bg-white rounded-xl border border-slate-300 shadow-lg p-6 space-y-6 scroll-mt-6">
           <div className="flex items-start justify-between pb-4 border-b border-slate-200">
             <div>
               <div className="flex items-center space-x-2">
@@ -255,6 +402,13 @@ export const ProductsPage: React.FC = () => {
               </p>
             </div>
             <div className="flex items-center space-x-2">
+              <button
+                onClick={openEditListings}
+                className="inline-flex items-center px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-md shadow-sm"
+              >
+                <Edit3 className="w-3.5 h-3.5 mr-1" />
+                Edit Listings
+              </button>
               <button
                 onClick={() => handleRunEvaluation(selectedProduct.id)}
                 className="inline-flex items-center px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-md shadow-sm"
@@ -313,7 +467,7 @@ export const ProductsPage: React.FC = () => {
                       ) : (
                         <tr>
                           <td colSpan={4} className="px-3 py-4 text-center text-slate-400">
-                            No declarations recorded. Upload packaging image in the Evidence tab.
+                            No declarations recorded. Click <strong>"Edit Listings"</strong> above to add listing declarations, or upload a packaging image in the Evidence tab.
                           </td>
                         </tr>
                       )}
@@ -401,10 +555,12 @@ export const ProductsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Register Product Modal */}
+      {/* ═══════════════════════════════════════════ */}
+      {/*  Register Product Modal (with Listings)    */}
+      {/* ═══════════════════════════════════════════ */}
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <h3 className="text-base font-bold text-slate-900">Register New Product</h3>
               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
@@ -440,7 +596,10 @@ export const ProductsPage: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Category *</label>
                   <select
                     value={newProduct.category}
-                    onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
+                    onChange={(e) => {
+                      setNewProduct({ ...newProduct, category: e.target.value });
+                      setCreateListingValues({}); // Reset listings when category changes
+                    }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
                   >
                     <option value="FOOD">FOOD</option>
@@ -484,6 +643,40 @@ export const ProductsPage: React.FC = () => {
                 />
               </div>
 
+              {/* ── Category-Specific Listing Declarations ── */}
+              <div className="border-t border-slate-200 pt-3">
+                <button
+                  type="button"
+                  onClick={() => setShowListingInCreate(!showListingInCreate)}
+                  className="flex items-center text-xs font-semibold text-primary-600 hover:text-primary-800"
+                >
+                  <ChevronDown className={`w-4 h-4 mr-1 transition-transform ${showListingInCreate ? 'rotate-180' : ''}`} />
+                  {showListingInCreate ? 'Hide' : 'Add'} E-Commerce Listing Declarations ({newProduct.category})
+                </button>
+
+                {showListingInCreate && (
+                  <div className="mt-3 space-y-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                    <p className="text-[11px] text-slate-500 mb-2">
+                      Fill in the fields as they appear on the e-commerce listing. These will be cross-checked against package declarations for consistency.
+                    </p>
+                    {getFieldsForCategory(newProduct.category).map((field) => (
+                      <div key={field.fieldName} className="grid grid-cols-3 gap-2 items-center">
+                        <label className="col-span-1 font-medium text-slate-700 truncate" title={field.label}>
+                          {field.label} {field.required && <span className="text-red-500">*</span>}
+                        </label>
+                        <input
+                          type="text"
+                          value={createListingValues[field.fieldName] || ''}
+                          onChange={(e) => setCreateListingValues({ ...createListingValues, [field.fieldName]: e.target.value })}
+                          placeholder={field.placeholder}
+                          className="col-span-2 px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
                 <button
                   type="button"
@@ -500,6 +693,69 @@ export const ProductsPage: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════ */}
+      {/*  Edit Listings Modal                       */}
+      {/* ═══════════════════════════════════════════ */}
+      {showEditListings && selectedProduct && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Edit Listing Declarations
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {selectedProduct.productName} — <strong>{selectedProduct.category}</strong>
+                </p>
+              </div>
+              <button onClick={() => setShowEditListings(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Enter the values as displayed on the e-commerce product listing page. These will be compared against the physical package label (via OCR) for cross-source consistency checks.
+            </p>
+
+            <div className="space-y-2">
+              {getFieldsForCategory(selectedProduct.category).map((field) => (
+                <div key={field.fieldName} className="grid grid-cols-3 gap-2 items-center text-xs">
+                  <label className="col-span-1 font-medium text-slate-700 truncate" title={field.label}>
+                    {field.label}
+                  </label>
+                  <input
+                    type="text"
+                    value={listingFormValues[field.fieldName] || ''}
+                    onChange={(e) => setListingFormValues({ ...listingFormValues, [field.fieldName]: e.target.value })}
+                    placeholder={field.placeholder}
+                    className="col-span-2 px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setShowEditListings(false)}
+                className="px-3 py-2 border border-slate-300 rounded-md text-slate-700 hover:bg-slate-50 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveListings}
+                disabled={listingSaving}
+                className="inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-md shadow-sm text-xs disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5 mr-1" />
+                {listingSaving ? 'Saving...' : 'Save Listings'}
+              </button>
+            </div>
           </div>
         </div>
       )}

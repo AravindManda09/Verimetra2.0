@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   RefreshCw,
   GitBranch,
@@ -10,6 +10,8 @@ import {
   Sparkles,
   AlertCircle,
   FileCheck,
+  ArrowUp,
+  Info,
 } from 'lucide-react';
 import {
   getRules,
@@ -29,6 +31,8 @@ export const RevalidationPage: React.FC = () => {
   const [latestRun, setLatestRun] = useState<RevalidationRun | null>(null);
   const [candidates, setCandidates] = useState<RevalidationCandidate[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const resultsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchRulesAndRuns();
@@ -52,7 +56,7 @@ export const RevalidationPage: React.FC = () => {
       }
 
       if (runsRes.data.content.length > 0) {
-        handleSelectRun(runsRes.data.content[0]);
+        handleSelectRun(runsRes.data.content[0], false);
       }
     } catch {
       toast.error('Failed to load revalidation context');
@@ -67,13 +71,19 @@ export const RevalidationPage: React.FC = () => {
     }
   };
 
-  const handleSelectRun = async (run: RevalidationRun) => {
+  const handleSelectRun = async (run: RevalidationRun, shouldScroll = false) => {
     setLatestRun(run);
     try {
       const res = await getRevalidationCandidates(run.id);
       setCandidates(res.data);
     } catch {
       setCandidates([]);
+    } finally {
+      if (shouldScroll) {
+        setTimeout(() => {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+      }
     }
   };
 
@@ -90,8 +100,7 @@ export const RevalidationPage: React.FC = () => {
         newVersionId: Number(selectedVersionId),
       });
       toast.success('Incremental revalidation complete!', { id: 'reval' });
-      setLatestRun(res.data);
-      handleSelectRun(res.data);
+      handleSelectRun(res.data, true);
       const runsRes = await getRevalidationRuns({ size: 10 });
       setRecentRuns(runsRes.data.content);
     } catch (err: any) {
@@ -114,8 +123,7 @@ export const RevalidationPage: React.FC = () => {
         newVersionId: Number(selectedVersionId),
       });
       toast.success('Full Revalidation baseline complete!', { id: 'reval' });
-      setLatestRun(res.data);
-      handleSelectRun(res.data);
+      handleSelectRun(res.data, true);
       const runsRes = await getRevalidationRuns({ size: 10 });
       setRecentRuns(runsRes.data.content);
     } catch (err: any) {
@@ -247,7 +255,7 @@ export const RevalidationPage: React.FC = () => {
 
       {/* Execution Results Summary */}
       {latestRun && (
-        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6">
+        <div ref={resultsRef} className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-6 scroll-mt-6">
           <div className="flex items-start justify-between pb-4 border-b border-slate-200">
             <div>
               <div className="flex items-center space-x-2">
@@ -377,8 +385,22 @@ export const RevalidationPage: React.FC = () => {
 
       {/* Revalidation Run History */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200">
-          <h3 className="text-sm font-bold text-slate-900">Revalidation Execution History</h3>
+        <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900">Revalidation Execution History</h3>
+            <p className="text-xs text-slate-500">
+              Click <strong>Inspect &rarr;</strong> on any past execution to view its candidate breakdown, Phase A/B attribution, and cache metrics above.
+            </p>
+          </div>
+          {latestRun && (
+            <button
+              onClick={() => resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="inline-flex items-center text-xs font-semibold text-primary-600 hover:text-primary-800"
+            >
+              <ArrowUp className="w-3.5 h-3.5 mr-1" />
+              Scroll to Active Inspection (Run #{latestRun.id})
+            </button>
+          )}
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
@@ -397,8 +419,10 @@ export const RevalidationPage: React.FC = () => {
               {recentRuns.map((r) => (
                 <tr
                   key={r.id}
-                  onClick={() => handleSelectRun(r)}
-                  className={`cursor-pointer hover:bg-slate-50 ${latestRun?.id === r.id ? 'bg-primary-50/50' : ''}`}
+                  onClick={() => handleSelectRun(r, true)}
+                  className={`cursor-pointer hover:bg-slate-50 transition-colors ${
+                    latestRun?.id === r.id ? 'bg-primary-50/70' : ''
+                  }`}
                 >
                   <td className="px-4 py-3 font-mono font-bold text-slate-900">#{r.id}</td>
                   <td className="px-4 py-3">
@@ -417,7 +441,15 @@ export const RevalidationPage: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 font-mono">{r.totalDurationMs} ms</td>
                   <td className="px-4 py-3 text-right">
-                    <button className="text-primary-600 font-semibold">Inspect &rarr;</button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectRun(r, true);
+                      }}
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-semibold text-primary-600 hover:text-primary-800 bg-primary-50 hover:bg-primary-100 rounded-md transition-colors"
+                    >
+                      Inspect &rarr;
+                    </button>
                   </td>
                 </tr>
               ))}
