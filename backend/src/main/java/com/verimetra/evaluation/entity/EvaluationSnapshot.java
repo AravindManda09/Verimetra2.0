@@ -1,6 +1,8 @@
 package com.verimetra.evaluation.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 
 @Entity
@@ -13,12 +15,15 @@ public class EvaluationSnapshot {
     @Column(name = "evaluation_id", nullable = false, unique = true)
     private Long evaluationId;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "product_snapshot", columnDefinition = "JSONB", nullable = false)
     private String productSnapshot;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "declaration_snapshot", columnDefinition = "JSONB", nullable = false)
     private String declarationSnapshot;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "rule_version_snapshot", columnDefinition = "JSONB", nullable = false)
     private String ruleVersionSnapshot;
 

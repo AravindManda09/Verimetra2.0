@@ -22,12 +22,24 @@ app.add_middleware(
 
 # Initialize OCR engine
 ocr_engine = None
+engine_name = None
+
 try:
-    from paddleocr import PaddleOCR
-    ocr_engine = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
-    logger.info("PaddleOCR initialized successfully")
+    from rapidocr_onnxruntime import RapidOCR
+    ocr_engine = RapidOCR()
+    engine_name = "rapidocr"
+    logger.info("RapidOCR initialized successfully (ONNX runtime)")
 except Exception as e:
-    logger.warning(f"PaddleOCR initialization failed: {e}. OCR will return empty results.")
+    logger.warning(f"RapidOCR initialization failed: {e}. Trying PaddleOCR...")
+    try:
+        from paddleocr import PaddleOCR
+        ocr_engine = PaddleOCR(use_angle_cls=True, lang='en', show_log=False)
+        engine_name = "paddleocr"
+        logger.info("PaddleOCR initialized successfully")
+    except Exception as e2:
+        logger.warning(f"PaddleOCR initialization failed: {e2}. OCR engine unavailable.")
+
+
 
 
 class ExtractedField(BaseModel):
@@ -137,8 +149,8 @@ def extract_fields_from_text(text: str) -> list[ExtractedField]:
 @app.get("/health")
 async def health():
     return {
-        "status": "healthy",
-        "ocr_engine": "paddleocr" if ocr_engine else "unavailable",
+        "status": "healthy" if ocr_engine is not None else "degraded",
+        "ocr_engine": engine_name if engine_name else "unavailable",
         "service": "verimetra-ocr"
     }
 
@@ -177,22 +189,43 @@ async def extract_text(file: UploadFile = File(...)):
         )
     
     try:
-        results = ocr_engine.ocr(image_array, cls=True)
+        lines = []
+        if engine_name == "rapidocr":
+            results, _ = ocr_engine(image_array)
+            if not results:
+                return ExtractionResult(
+                    raw_text="",
+                    extracted_fields=[],
+                    extraction_status="NO_TEXT_FOUND",
+                    error_message="No text could be extracted from the image."
+                )
+            for item in results:
+                if item and len(item) >= 2:
+                    text = item[1]
+                    if text and str(text).strip():
+                        lines.append(str(text).strip())
+        elif engine_name == "paddleocr":
+            results = ocr_engine.ocr(image_array, cls=True)
+            if not results or not results[0]:
+                return ExtractionResult(
+                    raw_text="",
+                    extracted_fields=[],
+                    extraction_status="NO_TEXT_FOUND",
+                    error_message="No text could be extracted from the image."
+                )
+            for line in results[0]:
+                if line and len(line) >= 2:
+                    text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
+                    if text and str(text).strip():
+                        lines.append(str(text).strip())
         
-        if not results or not results[0]:
+        if not lines:
             return ExtractionResult(
                 raw_text="",
                 extracted_fields=[],
                 extraction_status="NO_TEXT_FOUND",
                 error_message="No text could be extracted from the image."
             )
-        
-        # Build raw text
-        lines = []
-        for line in results[0]:
-            if line and len(line) >= 2:
-                text = line[1][0] if isinstance(line[1], (list, tuple)) else str(line[1])
-                lines.append(text)
         
         raw_text = '\n'.join(lines)
         extracted_fields = extract_fields_from_text(raw_text)
