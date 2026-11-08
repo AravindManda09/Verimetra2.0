@@ -101,7 +101,6 @@ export const ProductsPage: React.FC = () => {
 
   // Listing fields in create-product modal
   const [createListingValues, setCreateListingValues] = useState<Record<string, string>>({});
-  const [showListingInCreate, setShowListingInCreate] = useState(false);
 
   useEffect(() => {
     fetchProducts();
@@ -151,23 +150,32 @@ export const ProductsPage: React.FC = () => {
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await createProduct(newProduct as any);
+      const productPayload = {
+        productName: newProduct.productName,
+        sku: newProduct.sku || undefined,
+        category: newProduct.category,
+        manufacturerName: createListingValues['manufacturer_name'] || newProduct.manufacturerName || 'Not specified',
+        countryOfOrigin: createListingValues['country_of_origin'] || newProduct.countryOfOrigin || 'India',
+        description: newProduct.description || `${newProduct.category} product`,
+      };
+
+      const res = await createProduct(productPayload as any);
       const createdProduct = res.data;
 
-      // Save listing declarations if any
+      // Save listing declarations
       const listingFields = Object.entries(createListingValues)
-        .filter(([_, v]) => v.trim() !== '')
-        .map(([fieldName, fieldValue]) => ({ fieldName, fieldValue }));
+        .filter(([_, v]) => v && v.trim() !== '')
+        .map(([fieldName, fieldValue]) => ({ fieldName, fieldValue: fieldValue.trim() }));
 
       if (listingFields.length > 0) {
         try {
           await updateDeclarations(createdProduct.id, { source: 'LISTING', fields: listingFields });
         } catch {
-          toast.error('Product created but listing declarations failed to save.');
+          toast.error('Product registered, but listing declarations failed to save.');
         }
       }
 
-      toast.success('Product registered successfully!');
+      toast.success('Product and listing declarations registered successfully!');
       setShowCreateModal(false);
       setNewProduct({
         productName: '',
@@ -178,7 +186,6 @@ export const ProductsPage: React.FC = () => {
         description: '',
       });
       setCreateListingValues({});
-      setShowListingInCreate(false);
       fetchProducts();
       handleSelectProduct(createdProduct);
     } catch (err: any) {
@@ -253,7 +260,6 @@ export const ProductsPage: React.FC = () => {
         <button
           onClick={() => {
             setCreateListingValues({});
-            setShowListingInCreate(false);
             setShowCreateModal(true);
           }}
           className="mt-3 sm:mt-0 inline-flex items-center px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white text-xs font-semibold rounded-md shadow-sm"
@@ -543,119 +549,104 @@ export const ProductsPage: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 space-y-4 my-8 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-              <h3 className="text-base font-bold text-slate-900">Register New Product</h3>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Register New Product</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Enter product basics and e-commerce listing declarations for compliance verification
+                </p>
+              </div>
               <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateProduct} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Product Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={newProduct.productName}
-                  onChange={(e) => setNewProduct({ ...newProduct, productName: e.target.value })}
-                  placeholder="e.g. Organic Brown Rice"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
+            <form onSubmit={handleCreateProduct} className="space-y-4 text-xs">
+              {/* Product Core Identification */}
+              <div className="space-y-3 bg-slate-50 p-3.5 rounded-lg border border-slate-200">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">SKU</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Product Name *</label>
                   <input
                     type="text"
-                    value={newProduct.sku}
-                    onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
-                    placeholder="e.g. FOOD-009"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                    required
+                    value={newProduct.productName}
+                    onChange={(e) => setNewProduct({ ...newProduct, productName: e.target.value })}
+                    placeholder="e.g. Organic Brown Rice 1kg"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500 bg-white"
                   />
                 </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Category *</label>
-                  <select
-                    value={newProduct.category}
-                    onChange={(e) => {
-                      setNewProduct({ ...newProduct, category: e.target.value });
-                      setCreateListingValues({}); // Reset listings when category changes
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
-                  >
-                    <option value="FOOD">FOOD</option>
-                    <option value="COSMETICS">COSMETICS</option>
-                    <option value="ELECTRONICS">ELECTRONICS</option>
-                    <option value="HOUSEHOLD">HOUSEHOLD</option>
-                  </select>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">SKU / Code</label>
+                    <input
+                      type="text"
+                      value={newProduct.sku}
+                      onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
+                      placeholder="e.g. FOOD-016"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-semibold text-slate-700 mb-1">Category *</label>
+                    <select
+                      value={newProduct.category}
+                      onChange={(e) => {
+                        setNewProduct({ ...newProduct, category: e.target.value });
+                        setCreateListingValues({}); // Reset listings when category changes
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-semibold text-primary-700"
+                    >
+                      <option value="FOOD">FOOD</option>
+                      <option value="COSMETICS">COSMETICS</option>
+                      <option value="ELECTRONICS">ELECTRONICS</option>
+                      <option value="HOUSEHOLD">HOUSEHOLD</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Category Listing Declarations (5-6 Fields) */}
+              <div className="space-y-3 bg-blue-50/60 p-3.5 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-primary-900 uppercase tracking-wider">
+                    {newProduct.category} E-Commerce Listing Declarations
+                  </span>
+                  <span className="text-[10px] bg-primary-100 text-primary-800 px-2 py-0.5 rounded font-semibold">
+                    {getFieldsForCategory(newProduct.category).length} Fields
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Enter values as published on the online listing. These will be verified against physical package declarations.
+                </p>
+
+                <div className="space-y-2 mt-2">
+                  {getFieldsForCategory(newProduct.category).map((field) => (
+                    <div key={field.fieldName} className="grid grid-cols-3 gap-2 items-center text-xs">
+                      <label className="col-span-1 font-medium text-slate-700 truncate" title={field.label}>
+                        {field.label} {field.required && <span className="text-red-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        required={field.required}
+                        value={createListingValues[field.fieldName] || ''}
+                        onChange={(e) => setCreateListingValues({ ...createListingValues, [field.fieldName]: e.target.value })}
+                        placeholder={field.placeholder}
+                        className="col-span-2 px-2.5 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500 bg-white"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Manufacturer Name</label>
-                <input
-                  type="text"
-                  value={newProduct.manufacturerName}
-                  onChange={(e) => setNewProduct({ ...newProduct, manufacturerName: e.target.value })}
-                  placeholder="e.g. Nature Best Foods Ltd"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Country of Origin</label>
-                <input
-                  type="text"
-                  value={newProduct.countryOfOrigin}
-                  onChange={(e) => setNewProduct({ ...newProduct, countryOfOrigin: e.target.value })}
-                  placeholder="e.g. India"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                />
-              </div>
-
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Description</label>
+                <label className="block font-semibold text-slate-700 mb-1">Description (Optional)</label>
                 <textarea
                   rows={2}
                   value={newProduct.description}
                   onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })}
-                  placeholder="Commodity declaration notes"
+                  placeholder="Notes or commodity classification remarks"
                   className="w-full px-3 py-2 border border-slate-300 rounded-md"
                 />
-              </div>
-
-              {/* ── Category-Specific Listing Declarations ── */}
-              <div className="border-t border-slate-200 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowListingInCreate(!showListingInCreate)}
-                  className="flex items-center text-xs font-semibold text-primary-600 hover:text-primary-800"
-                >
-                  <ChevronDown className={`w-4 h-4 mr-1 transition-transform ${showListingInCreate ? 'rotate-180' : ''}`} />
-                  {showListingInCreate ? 'Hide' : 'Add'} E-Commerce Listing Declarations ({newProduct.category})
-                </button>
-
-                {showListingInCreate && (
-                  <div className="mt-3 space-y-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                    <p className="text-[11px] text-slate-500 mb-2">
-                      Fill in the fields as they appear on the e-commerce listing. These will be cross-checked against package declarations for consistency.
-                    </p>
-                    {getFieldsForCategory(newProduct.category).map((field) => (
-                      <div key={field.fieldName} className="grid grid-cols-3 gap-2 items-center">
-                        <label className="col-span-1 font-medium text-slate-700 truncate" title={field.label}>
-                          {field.label} {field.required && <span className="text-red-500">*</span>}
-                        </label>
-                        <input
-                          type="text"
-                          value={createListingValues[field.fieldName] || ''}
-                          onChange={(e) => setCreateListingValues({ ...createListingValues, [field.fieldName]: e.target.value })}
-                          placeholder={field.placeholder}
-                          className="col-span-2 px-2 py-1.5 border border-slate-300 rounded-md focus:ring-1 focus:ring-primary-500"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div className="pt-3 border-t border-slate-200 flex justify-end space-x-2">
@@ -670,7 +661,7 @@ export const ProductsPage: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white font-semibold rounded-md shadow-sm"
                 >
-                  Register
+                  Register Product & Declarations
                 </button>
               </div>
             </form>
