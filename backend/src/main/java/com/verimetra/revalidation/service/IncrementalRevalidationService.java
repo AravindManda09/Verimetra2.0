@@ -157,18 +157,27 @@ public class IncrementalRevalidationService {
             changeBuilder.append("Applicability narrowed, removed: ").append(removedCategories).append("; ");
         }
 
+        boolean requirementModified = !Objects.equals(prevVersion.getValidationOperator(), newVersion.getValidationOperator())
+                || !Objects.equals(prevVersion.getExpectedValue(), newVersion.getExpectedValue())
+                || !Objects.equals(prevVersion.getRequiredField(), newVersion.getRequiredField())
+                || !Objects.equals(prevVersion.getRequirementType(), newVersion.getRequirementType());
+
         // 2. Candidate Discovery
         // Map of productId -> candidate reason (guarantees deduplication)
         Map<Long, String> candidates = new LinkedHashMap<>();
 
         // Phase A: Previously associated products
-        // Products that have an active dependency on this rule or evaluated under previous version
+        // Products that have an active dependency on this rule need re-evaluation IF the rule's requirement/logic changed
+        // OR if categories were removed (narrowed).
+        // If requirement is unmodified and ONLY applicability expanded, prior evaluations remain 100% valid and are safely REUSED!
+        int phaseACount = 0;
         List<Long> previouslyAssociatedIds = dependencyRepository.findProductIdsByRuleId(rule.getId());
-        for (Long pid : previouslyAssociatedIds) {
-            candidates.put(pid, "PREVIOUSLY_ASSOCIATED");
+        if (requirementModified || !removedCategories.isEmpty() || previouslyAssociatedIds.isEmpty()) {
+            for (Long pid : previouslyAssociatedIds) {
+                candidates.put(pid, "PREVIOUSLY_ASSOCIATED");
+            }
+            phaseACount = candidates.size();
         }
-
-        int phaseACount = candidates.size();
 
         // Phase B: Newly applicable products (Applicability Expansion)
         // If new categories were added, search current catalogue for products in those categories
@@ -208,13 +217,19 @@ public class IncrementalRevalidationService {
         long evalTime = 0;
         long persistTime = 0;
 
+        Map<Long, Product> productMap = productRepository.findAllById(candidates.keySet()).stream()
+                .collect(java.util.stream.Collectors.toMap(Product::getId, p -> p));
+
+        List<RevalidationCandidate> candidateEntities = new ArrayList<>();
+        List<EvaluationFinding> allFindings = new ArrayList<>();
+        List<EvaluationSnapshot> allSnapshots = new ArrayList<>();
+
         for (Map.Entry<Long, String> entry : candidates.entrySet()) {
             Long productId = entry.getKey();
             String reason = entry.getValue();
 
-            Optional<Product> prodOpt = productRepository.findById(productId);
-            if (prodOpt.isEmpty()) continue;
-            Product product = prodOpt.get();
+            Product product = productMap.get(productId);
+            if (product == null) continue;
 
             // Record candidate entry
             RevalidationCandidate cand = new RevalidationCandidate();
@@ -223,7 +238,7 @@ public class IncrementalRevalidationService {
             cand.setCandidateReason(reason);
             cand.setWasEvaluated(true);
             cand.setWasReused(false);
-            candidateRepository.save(cand);
+            candidateEntities.add(cand);
 
             List<ProductDeclaration> decls = declarationRepository.findByProductId(productId);
             List<PackageEvidence> evList = evidenceRepository.findByProductIdOrderByCreatedAtDesc(productId);
@@ -251,7 +266,7 @@ public class IncrementalRevalidationService {
 
             for (EvaluationFinding f : evalResult.findings()) {
                 f.setEvaluationId(eval.getId());
-                findingRepository.save(f);
+                allFindings.add(f);
                 findingsCount++;
             }
 
@@ -261,7 +276,7 @@ public class IncrementalRevalidationService {
                 snapshot.setProductSnapshot(objectMapper.writeValueAsString(product));
                 snapshot.setDeclarationSnapshot(objectMapper.writeValueAsString(decls));
                 snapshot.setRuleVersionSnapshot(objectMapper.writeValueAsString(newVersion));
-                snapshotRepository.save(snapshot);
+                allSnapshots.add(snapshot);
             } catch (Exception ignored) {}
 
             updateDependency(productId, rule.getId(), newVersion.getId(), eval.getId());
@@ -269,6 +284,12 @@ public class IncrementalRevalidationService {
             long pEnd = System.currentTimeMillis();
             persistTime += (pEnd - pStart);
         }
+
+        long pBatchStart = System.currentTimeMillis();
+        if (!candidateEntities.isEmpty()) candidateRepository.saveAll(candidateEntities);
+        if (!allFindings.isEmpty()) findingRepository.saveAll(allFindings);
+        if (!allSnapshots.isEmpty()) snapshotRepository.saveAll(allSnapshots);
+        persistTime += (System.currentTimeMillis() - pBatchStart);
 
         // Calculate reusable unaffected evaluations
         // Products that are NOT in candidate set and not affected by this rule version change retain their prior status
